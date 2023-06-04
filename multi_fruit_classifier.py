@@ -63,9 +63,7 @@ def main():
             if not os.path.isfile(filepath) or filename.split(".")[-1] != "jpg":
                 continue
 
-            image = img_to_array(
-                load_img(filepath, target_size=(TRAINING_WIDTH, TRAINING_HEIGHT))
-            )
+            image = img_to_array(load_img(filepath, target_size=(TRAINING_HEIGHT, TRAINING_WIDTH)))
 
             # Normalize the BGR pixels (0-1)
             image = image / 255.0
@@ -116,6 +114,25 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     global TRAINING_HEIGHT
 
     model = Sequential()
+    
+    # In a Convolutional Model, a NxM kernel slides to each possible location in the 2D input.
+    # The kernel (of weights) performs an element-wise multiplication and summing all values into one.
+    # The N-kernels will generate N-maps with unique features extracted from the input image.
+    # Kernel Sizes: 3x3 (common), 5x5 (suitable for small features), 7x7 or 9x9 (appropriate for larger features)
+
+    # Rectified Linear Unit ReLU(x) = max(0, x)
+    # Any negative value becomes zero, addressing the gradients/derivatives
+    #   from becoming very small and providing less effective learning
+    # ReLU sets all negative values in the feature maps to zero
+    #   introducing non-linearity to help in learning complex patterns and relationships
+    
+    # Batch Normalization helps accelerate and stabilize the training process
+    #   by normalizing the activation after the Convolutional Layer.
+    # Each feature map is independently normalized.
+    
+    # Max Pooling is used to downsample and reducing spatial dimensiosn of feature maps.
+    # It divides the feature map into non-overlapping regions and chooses the maximum value for each.
+    # Simply, it looks for the most important parts and reduces the data size for improved processing.
 
     model.add(
         Conv2D(
@@ -125,14 +142,9 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
             input_shape=(TRAINING_HEIGHT, TRAINING_WIDTH, 3),
         )
     )
-    # Batch Normalization helps accelerate and stabilize the training process
-    #   by normalizing the activation after the Convulational Layer
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
-
-    # Rectified Linear Unit ReLU(x) = max(0, x)
-    # Any negative value becomes zero, addressing the gradients/derivatives
-    # from becoming very small and providing less effective learning
+    
     model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -141,10 +153,16 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
+    # The complex feature maps must be flattened
+    #   before feeding to the Dense layers, since it only accepts 1D arrays.
     model.add(Flatten())
+    
+    # Dense is a layer where each neuron is fully connected to the previous layer.
+    # It means that each neuron accepts the full output of the previous layer.
 
     # Dropout is typically applied after the fully connected layers.
     # Value range from 0.2-0.5, with 0.5 as ideal to avoid overfitting in smaller datasets.
+
     model.add(Dense(256, activation="relu"))
     model.add(BatchNormalization())
     model.add(Dropout(0.2))
@@ -163,9 +181,7 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     # Categorical Cross-Entropy is used to minimize the difference
     #   between the predicted probabilities and the encoded labels
     #   to make more accurate predictions and assign higher probabilities to the correct classes.
-    model.compile(
-        loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"]
-    )
+    model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
     model.summary()
 
     training_images = np.array(training_images)
