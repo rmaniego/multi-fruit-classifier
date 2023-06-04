@@ -130,28 +130,30 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     #   by normalizing the activation after the Convolutional Layer.
     # Each feature map is independently normalized.
     
-    # Max Pooling is used to downsample and reducing spatial dimensiosn of feature maps.
+    # Max Pooling is used to downsample and reducing spatial dimensions of feature maps.
     # It divides the feature map into non-overlapping regions and chooses the maximum value for each.
     # Simply, it looks for the most important parts and reduces the data size for improved processing.
+    # Larger pool size may lead to less detailed feature maps.
+    # Pool Size: 2x2 and 3x3 (most common)
 
     model.add(
         Conv2D(
             32,
-            kernel_size=(3, 3),
+            kernel_size=(5, 5),
             activation="relu",
             input_shape=(TRAINING_HEIGHT, TRAINING_WIDTH, 3),
         )
     )
     model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(MaxPooling2D(pool_size=(3, 3)))
     
-    model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
+    model.add(Conv2D(64, kernel_size=(5, 5), activation="relu"))
     model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(MaxPooling2D(pool_size=(3, 3)))
 
-    model.add(Conv2D(128, kernel_size=(3, 3), activation="relu"))
+    model.add(Conv2D(128, kernel_size=(5, 5), activation="relu"))
     model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(MaxPooling2D(pool_size=(3, 3)))
 
     # The complex feature maps must be flattened
     #   before feeding to the Dense layers, since it only accepts 1D arrays.
