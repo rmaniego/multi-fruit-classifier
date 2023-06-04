@@ -165,10 +165,10 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
 
     model.add(Dense(256, activation="relu"))
     model.add(BatchNormalization())
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.5))
     model.add(Dense(128, activation="relu"))
     model.add(BatchNormalization())
-    model.add(Dropout(0.2))
+    model.add(Dropout(0.5))
 
     # Output Layer
     # SoftMax softmax(z_i) = exp(z_i) / sum(exp(z_j)) for all j
@@ -193,6 +193,13 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
         validation_split=0.2,
     )
     model.save(model_file_path)
+    
+    # If the training accuracy is high, but valdiation accuracy is very low:
+    #   a.) The model might be too complex and is too specialized to the training data.
+    #   b.) The training data is insufficient to see diverse patterns for learning.
+    #   c.) Dropout value is too low, resulting to poor generalizations.
+    #   d.) Data might be siginificantly different from the training data.
+    #   e.) Hyperparameters needs more fine tuning for more optimal values.
 
     return model
 
