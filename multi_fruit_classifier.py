@@ -219,10 +219,12 @@ def model_predict(model, fruits):
                 load_img(filepath, target_size=(TRAINING_WIDTH, TRAINING_HEIGHT))
             )
             
+            # Reshape the input image appropriately for the prediction model
             reshaped = np.reshape([image], (1, TRAINING_HEIGHT, TRAINING_WIDTH, 3))
             prediction = model.predict(reshaped)[0]
-            predicted = fruits[np.argmax(prediction)]
             
+            # ArgMax, gets the index of the highest probability in the prediction array.
+            predicted = fruits[np.argmax(prediction)]
             results.append(f" * {fruit} = {predicted}")
 
     print("\n[RESULTS]")
