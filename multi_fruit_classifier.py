@@ -27,9 +27,9 @@ from tensorflow.keras.utils import to_categorical
 
 # GLOBAL CONSTANTS
 # 100-200, adjust per use-case
-EPOCHS = 100
-TRAINING_WIDTH = 100
-TRAINING_HEIGHT = 100
+EPOCHS = 10
+TRAINING_WIDTH = 120
+TRAINING_HEIGHT = 120
 TRAINING_PATH = "datasets/training"
 VALIDATION_PATH = "datasets/validation"
 
@@ -43,16 +43,11 @@ def main():
     global TRAINING_HEIGHT
     global TRAINING_PATH
 
-    # Rotations: 90, 180, 270
-    augmented_labels = []
-    rotations = [
-        cv2.ROTATE_90_CLOCKWISE,
-        cv2.ROTATE_180,
-        cv2.ROTATE_90_COUNTERCLOCKWISE,
-    ]
+    training_labels = []
 
     print("\nPreprocessing the dataset...")
     training_images = []
+    target_size = (TRAINING_HEIGHT, TRAINING_WIDTH)
     fruits = sorted(os.listdir(TRAINING_PATH))
     for label, fruit in enumerate(fruits):
 
@@ -63,23 +58,20 @@ def main():
             if not os.path.isfile(filepath) or filename.split(".")[-1] != "jpg":
                 continue
 
-            image = img_to_array(load_img(filepath, target_size=(TRAINING_HEIGHT, TRAINING_WIDTH)))
+            # Load image and convert HSV color
+            # RGB is default and is used in general-purpose computer vision tasks.
+            # HSV is useful for color-based analysis, segmentation, and feature-extraction.
+            image = img_to_array(load_img(filepath, target_size=target_size))
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
-            # Normalize the BGR pixels (0-1)
-            image = image / 255.0
             training_images.append(image)
-            augmented_labels.append(label)
-
-            # for rotation in rotations:
-            #     training_images.append(cv2.rotate(image, rotation))
-            #    augmented_labels.append(label)
+            training_labels.append(label)
 
     classes = len(fruits)
     training_images = np.array(training_images)
     training_dataset_size = len(training_images)
-    training_labels = to_categorical(np.array(augmented_labels), num_classes=classes)
-    augmented_labels = None
-    
+    training_labels = to_categorical(np.array(training_labels), num_classes=classes)
+
     print("\nLoading the model...")
     if not os.path.exists("models"):
         os.mkdir("models")
@@ -114,8 +106,8 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     global TRAINING_HEIGHT
 
     model = Sequential()
-    
-    # In a Convolutional Model, a NxM kernel slides to each possible location in the 2D input.
+
+    # In a Convolutional Layer, a NxM kernel slides to each possible location in the 2D input.
     # The kernel (of weights) performs an element-wise multiplication and summing all values into one.
     # The N-kernels will generate N-maps with unique features extracted from the input image.
     # Kernel Sizes: 3x3 (common), 5x5 (suitable for small features), 7x7 or 9x9 (appropriate for larger features)
@@ -125,11 +117,11 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     #   from becoming very small and providing less effective learning
     # ReLU sets all negative values in the feature maps to zero
     #   introducing non-linearity to help in learning complex patterns and relationships
-    
+
     # Batch Normalization helps accelerate and stabilize the training process
     #   by normalizing the activation after the Convolutional Layer.
     # Each feature map is independently normalized.
-    
+
     # Max Pooling is used to downsample and reducing spatial dimensions of feature maps.
     # It divides the feature map into non-overlapping regions and chooses the maximum value for each.
     # Simply, it looks for the most important parts and reduces the data size for improved processing.
@@ -146,19 +138,19 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     )
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(3, 3)))
-    
-    model.add(Conv2D(64, kernel_size=(5, 5), activation="relu"))
-    model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(3, 3)))
 
-    model.add(Conv2D(128, kernel_size=(5, 5), activation="relu"))
+    model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
     model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(3, 3)))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(Conv2D(128, kernel_size=(3, 3), activation="relu"))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(pool_size=(2, 2)))
 
     # The complex feature maps must be flattened
     #   before feeding to the Dense layers, since it only accepts 1D arrays.
     model.add(Flatten())
-    
+
     # Dense is a layer where each neuron is fully connected to the previous layer.
     # It means that each neuron accepts the full output of the previous layer.
 
@@ -168,9 +160,14 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     model.add(Dense(256, activation="relu"))
     model.add(BatchNormalization())
     model.add(Dropout(0.5))
+
     model.add(Dense(128, activation="relu"))
     model.add(BatchNormalization())
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(64, activation="relu"))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.2))
 
     # Output Layer
     # SoftMax softmax(z_i) = exp(z_i) / sum(exp(z_j)) for all j
@@ -195,13 +192,13 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
         validation_split=0.2,
     )
     model.save(model_file_path)
-    
+
     # If the training accuracy is high, but valdiation accuracy is very low:
     #   a.) The model might be too complex and is too specialized to the training data.
     #   b.) The training data is insufficient to see diverse patterns for learning.
     #   c.) Dropout value is too low, resulting to poor generalizations.
     #   d.) Data might be siginificantly different from the training data.
-    #   e.) Hyperparameters needs more fine tuning for more optimal values.
+    #   e.) Hyperparameters need more fine tuning for more optimal values.
 
     return model
 
@@ -216,6 +213,7 @@ def model_predict(model, fruits):
     global TRAINING_HEIGHT
 
     results = []
+    target_size = (TRAINING_WIDTH, TRAINING_HEIGHT)
     for label, fruit in enumerate(fruits):
         folder = f"{VALIDATION_PATH}/{fruit}"
         for filename in os.listdir(folder):
@@ -224,14 +222,13 @@ def model_predict(model, fruits):
                 # skip non-jpeg files
                 continue
 
-            image = img_to_array(
-                load_img(filepath, target_size=(TRAINING_WIDTH, TRAINING_HEIGHT))
-            )
-            
+            image = img_to_array(load_img(filepath, target_size=target_size))
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+
             # Reshape the input image appropriately for the prediction model
             reshaped = np.reshape([image], (1, TRAINING_HEIGHT, TRAINING_WIDTH, 3))
             prediction = model.predict(reshaped)[0]
-            
+
             # ArgMax, gets the index of the highest probability in the prediction array.
             predicted = fruits[np.argmax(prediction)]
             results.append(f" * {fruit} = {predicted}")
