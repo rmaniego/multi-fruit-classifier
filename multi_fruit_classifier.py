@@ -35,8 +35,8 @@ RESOURCES:
 """
 
 # GLOBAL CONSTANTS
-# 100-200, adjust per use-case
-EPOCHS = 50
+# EPOCHS: 100-200, adjust per use-case (TESTING=5; MAX=5000)
+EPOCHS = 30
 TRAINING_WIDTH = 150
 TRAINING_HEIGHT = 150
 TRAINING_PATH = "datasets/training"
@@ -132,15 +132,19 @@ def train_new_model(classes, dataset1, dataset2, model_filepath):
             input_shape=(TRAINING_HEIGHT, TRAINING_WIDTH, 3),
         )
     )
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(3, 3)))
 
     model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
     model.add(Conv2D(128, kernel_size=(3, 3), activation="relu"))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
     model.add(Conv2D(128, kernel_size=(3, 3), activation="relu"))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
     # The complex feature maps must be flattened
@@ -154,6 +158,7 @@ def train_new_model(classes, dataset1, dataset2, model_filepath):
     # Value range from 0.2-0.5, with 0.5 as ideal to avoid overfitting in smaller datasets.
 
     model.add(Dense(512, activation="relu"))
+    model.add(Dropout(0.2))
 
     # Output Layer
     # SoftMax softmax(z_i) = exp(z_i) / sum(exp(z_j)) for all j
@@ -161,12 +166,13 @@ def train_new_model(classes, dataset1, dataset2, model_filepath):
     #   transforming raw scores of the previous layer into a probability distribution
     model.add(Dense(classes, activation="softmax"))
 
-    # AdaM / Adaptive Moment Estimation
-    # AdaM tends to reach an optimal solution faster.
     # Categorical Cross-Entropy is used to minimize the difference
     #   between the predicted probabilities and the encoded labels
     #   to make more accurate predictions and assign higher probabilities to the correct classes.
-    model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
+    # AdaM vs RMSprop
+    #  - AdaM / Adaptive Moment Estimation, tends to reach an optimal solution faster, slower vs RMSprop.
+    #  - Root Mean Squared Propagation (RMSprop) with momentum reaches much further before it changes direction.
+    model.compile(loss="categorical_crossentropy", optimizer="rmsprop", metrics=["accuracy"])
     model.summary()
     
     callback = StopEarly()
@@ -176,7 +182,7 @@ def train_new_model(classes, dataset1, dataset2, model_filepath):
         epochs=EPOCHS,
         validation_data=dataset2,
         batch_size=64,
-        callbacks = [callback]
+        callbacks = [callback],
         workers=10
     )
     model.save(model_filepath)
@@ -189,7 +195,6 @@ def train_new_model(classes, dataset1, dataset2, model_filepath):
     #   e.) Hyperparameters need more fine tuning for more optimal values.
 
     return model
-
 
 def model_predict(model, fruits):
     """
