@@ -1,8 +1,8 @@
 import os
 import cv2
-import PIL
 import logging
 import numpy as np
+from PIL import Image
 
 # Suppress TF logs
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -22,16 +22,26 @@ from tensorflow.keras.layers import (
     Flatten,
     Dense,
 )
-from tensorflow.keras.preprocessing.image import load_img, img_to_array
+from tensorflow.keras.callbacks import Callback 
+from tensorflow.keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
 from tensorflow.keras.utils import to_categorical
+
+"""
+RESOURCES:
+ - https://github.com/daveluo/coconuts
+ - https://github.com/EvidenceN/multi-fruit-classification/blob/master/fruit_model.ipynb
+ - https://medium.com/@canerkilinc/hands-on-tensorflow-2-0-multi-label-classifications-with-mlp-88fc97d6a7e6
+ - https://www.tensorflow.org/tutorials/keras/classification
+"""
 
 # GLOBAL CONSTANTS
 # 100-200, adjust per use-case
-EPOCHS = 10
-TRAINING_WIDTH = 120
-TRAINING_HEIGHT = 120
+EPOCHS = 50
+TRAINING_WIDTH = 150
+TRAINING_HEIGHT = 150
 TRAINING_PATH = "datasets/training"
 VALIDATION_PATH = "datasets/validation"
+VALIDATION_ACCURACY = 0.98
 
 
 def main():
@@ -46,58 +56,44 @@ def main():
     training_labels = []
 
     print("\nPreprocessing the dataset...")
-    training_images = []
     target_size = (TRAINING_HEIGHT, TRAINING_WIDTH)
-    fruits = sorted(os.listdir(TRAINING_PATH))
-    for label, fruit in enumerate(fruits):
-
-        folder = f"{TRAINING_PATH}/{fruit}"
-
-        for filename in os.listdir(folder):
-            filepath = f"{folder}/{filename}"
-            if not os.path.isfile(filepath) or filename.split(".")[-1] != "jpg":
-                continue
-
-            # Load image and convert HSV color
-            # RGB is default and is used in general-purpose computer vision tasks.
-            # HSV is useful for color-based analysis, segmentation, and feature-extraction.
-            image = img_to_array(load_img(filepath, target_size=target_size))
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-
-            training_images.append(image)
-            training_labels.append(label)
-
+    
+    data_generator = ImageDataGenerator(rescale = 1./255, validation_split=0.2, preprocessing_function=RGB2HSV)
+    dataset1 = data_generator.flow_from_directory(TRAINING_PATH, target_size=target_size, shuffle=True, subset="training", class_mode="categorical")
+    dataset2 = data_generator.flow_from_directory(TRAINING_PATH, target_size=target_size, shuffle=True, subset="validation", class_mode="categorical")
+    
+    fruits = list(os.listdir(TRAINING_PATH))
+    dataset_size = len(dataset1)
     classes = len(fruits)
-    training_images = np.array(training_images)
-    training_dataset_size = len(training_images)
-    training_labels = to_categorical(np.array(training_labels), num_classes=classes)
+    
 
     print("\nLoading the model...")
     if not os.path.exists("models"):
         os.mkdir("models")
 
     # Format model name based on preprocessing data.
-    model_file_path = f"models/{classes}_{training_dataset_size}_{TRAINING_WIDTH}x{TRAINING_HEIGHT}_{EPOCHS}.h5"
-    model = load_model_from_file(model_file_path)
+    model_filepath = f"models/{classes}_{dataset_size}_{TRAINING_WIDTH}x{TRAINING_HEIGHT}_{EPOCHS}.h5"
+    model = load_model_from_file(model_filepath)
     if model is None:
         model = train_new_model(
-            classes, training_images, training_labels, model_file_path
+            classes, dataset1, dataset2, model_filepath
         )
 
-    training_images = None
+    dataset1 = None
+    dataset2 = None
     print("\nPredicting unseen images...")
     model_predict(model, fruits)
 
 
-def load_model_from_file(model_file_path):
+def load_model_from_file(model_filepath):
     """
     Return the specified model if it exists.
     """
-    if os.path.exists(model_file_path):
-        return load_model(model_file_path)
+    if os.path.exists(model_filepath):
+        return load_model(model_filepath)
 
 
-def train_new_model(classes, training_images, training_labels, model_file_path):
+def train_new_model(classes, dataset1, dataset2, model_filepath):
     """
     Prepare and train new model based on updated dataset.
     """
@@ -130,21 +126,21 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
 
     model.add(
         Conv2D(
-            32,
-            kernel_size=(5, 5),
+            64,
+            kernel_size=(3,3),
             activation="relu",
             input_shape=(TRAINING_HEIGHT, TRAINING_WIDTH, 3),
         )
     )
-    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(3, 3)))
 
     model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
-    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
     model.add(Conv2D(128, kernel_size=(3, 3), activation="relu"))
-    model.add(BatchNormalization())
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(Conv2D(128, kernel_size=(3, 3), activation="relu"))
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
     # The complex feature maps must be flattened
@@ -157,17 +153,7 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     # Dropout is typically applied after the fully connected layers.
     # Value range from 0.2-0.5, with 0.5 as ideal to avoid overfitting in smaller datasets.
 
-    model.add(Dense(256, activation="relu"))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.5))
-
-    model.add(Dense(128, activation="relu"))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.3))
-
-    model.add(Dense(64, activation="relu"))
-    model.add(BatchNormalization())
-    model.add(Dropout(0.2))
+    model.add(Dense(512, activation="relu"))
 
     # Output Layer
     # SoftMax softmax(z_i) = exp(z_i) / sum(exp(z_j)) for all j
@@ -182,16 +168,18 @@ def train_new_model(classes, training_images, training_labels, model_file_path):
     #   to make more accurate predictions and assign higher probabilities to the correct classes.
     model.compile(loss="categorical_crossentropy", optimizer="adam", metrics=["accuracy"])
     model.summary()
+    
+    callback = StopEarly()
 
-    training_images = np.array(training_images)
     model.fit(
-        training_images,
-        training_labels,
+        dataset1,
         epochs=EPOCHS,
+        validation_data=dataset2,
         batch_size=64,
-        validation_split=0.2,
+        callbacks = [callback]
+        workers=10
     )
-    model.save(model_file_path)
+    model.save(model_filepath)
 
     # If the training accuracy is high, but valdiation accuracy is very low:
     #   a.) The model might be too complex and is too specialized to the training data.
@@ -222,11 +210,10 @@ def model_predict(model, fruits):
                 # skip non-jpeg files
                 continue
 
-            image = img_to_array(load_img(filepath, target_size=target_size))
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+            image = RGB2HSV(img_to_array(load_img(filepath, target_size=target_size)))
 
             # Reshape the input image appropriately for the prediction model
-            reshaped = np.reshape([image], (1, TRAINING_HEIGHT, TRAINING_WIDTH, 3))
+            reshaped = np.vstack([np.expand_dims(image, axis=0)])
             prediction = model.predict(reshaped)[0]
 
             # ArgMax, gets the index of the highest probability in the prediction array.
@@ -236,6 +223,21 @@ def model_predict(model, fruits):
     print("\n[RESULTS]")
     for result in results:
         print(result)
+
+""" UTILS """
+
+class StopEarly(Callback):
+    
+    global VALIDATION_ACCURACY
+    
+    def on_epoch_end(self, epoch, logs={}):
+        if(logs.get("val_acc", 0) >= VALIDATION_ACCURACY):
+            print("Accuracy reached upper threshold, stopping model training...")
+            self.model.stop_training=True
+
+
+def RGB2HSV(image):
+    return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
 
 
 if __name__ == "__main__":
